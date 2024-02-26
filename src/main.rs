@@ -1,37 +1,60 @@
-fn get_random_float() -> f32 {
-    rand::random::<f32>() * 10f32
+use rand::{rngs::StdRng, Rng, SeedableRng};
+
+mod double;
+
+/// w1, w2, b
+type Model = (f32, f32, f32);
+
+fn sigmoid(value: f32) -> f32 {
+    return 1f32 / (1f32 + value.exp());
 }
 
-type Model = f32;
-
-fn loss_fn(input_data: &Vec<(i32, i32)>, model: Model, bias: f32) -> f32 {
+fn loss_fn(input_data: &Vec<(i32, i32, i32)>, model: Model) -> f32 {
     let mut result = 0f32;
     for t_data in input_data {
-        let input = t_data.0;
-        let expected = t_data.1;
-
-        let output = input as f32 * model;
-        result += (output - expected as f32) * (output - expected as f32); // as the difference between output and expected grows,
-        // it also does our result, if result is nearer to 0 our model is very nice
+        let expected = t_data.2;
+        let output = sigmoid(t_data.0 as f32 * model.0 + t_data.1 as f32 * model.1 + model.2);
+        let diff = output - expected as f32;
+        result += diff * diff
     }
     result
 }
 
+fn get_random_float() -> f32 {
+    let mut r = StdRng::seed_from_u64(10);
+    r.gen::<f32>() * 10f32
+}
+
 fn main() {
-    let input_data = vec![(1, 2), (2, 4), (4, 8), (6, 12), (12, 24)];
-    let mut weight = get_random_float();
-    let mut bias = get_random_float();
+    let train_set = vec![(0, 0, 0), (1, 0, 1), (0, 1, 1), (1, 1, 1)];
+    let mut model = (get_random_float(), get_random_float(), get_random_float());
+    let eps = 0.1;
+    let rate = 0.1;
+    println!("loss = {}", loss_fn(&train_set, model));
 
-    let eps = 0.001;
-    let rate = 0.001;
-
-    println!("{}", loss_fn(&input_data, weight + eps, bias));
-    for _ in 0..300 {
-        let diffcost = (loss_fn(&input_data, weight + eps, bias) - loss_fn(&input_data, weight, bias)) / eps;
-        let biascost = (loss_fn(&input_data, weight, bias + eps) - loss_fn(&input_data, weight, bias)) / eps;
-        weight -= rate*diffcost;
-        bias -= rate*biascost;
-        println!("{}", loss_fn(&input_data, weight, bias));
+    for _ in 0..100 * 1000 {
+        let loss = loss_fn(&train_set, model);
+        let diff_w1 = (loss_fn(&train_set, (model.0 + eps, model.1, model.2)) - loss) / eps;
+        let diff_w2 = (loss_fn(&train_set, (model.0, model.1 + eps, model.2)) - loss) / eps;
+        let diff_bias = (loss_fn(&train_set, (model.0, model.1, model.2 + eps)) - loss) / eps;
+        model = (
+            model.0 - rate * diff_w1,
+            model.1 - rate * diff_w2,
+            model.2 - rate * diff_bias,
+        );
+        println!("loss = {}", loss_fn(&train_set, model));
     }
-    println!("weight: {}, bias: {}", weight, bias);
+
+    println!("model = {:?}", model);
+
+    for i in 0..2 {
+        for j in 0..2 {
+            println!(
+                "{} | {} = {}",
+                i,
+                j,
+                sigmoid(i as f32 * model.0 + j as f32 * model.1 + model.2)
+            );
+        }
+    }
 }
