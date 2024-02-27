@@ -2,26 +2,22 @@ mod boolean_gates;
 mod double;
 
 #[derive(Clone, Copy, Debug)]
-struct Model {
-    or_w1: f32,
-    or_w2: f32,
-    or_b: f32,
-    and_w1: f32,
-    and_w2: f32,
-    and_b: f32,
-    nand_w1: f32,
-    nand_w2: f32,
-    nand_b: f32,
+struct Neuron {
+    weight_1: f32,
+    weight_2: f32,
+    bias: f32,
 }
+
+type Model = [Neuron; 3];
 
 fn sigmoid(value: f32) -> f32 {
     return 1f32 / (1f32 + value.exp());
 }
 
 fn forward(model: &Model, x1: f32, x2: f32) -> f32 {
-    let a: f32 = sigmoid(model.or_w1 * x1 + model.or_w2 * x2 + model.or_b);
-    let b: f32 = sigmoid(model.nand_w1 * x1 + model.nand_w2 * x2 + model.nand_b);
-    sigmoid(a * model.and_w1 + b * model.and_w2 + model.and_b)
+    let a: f32 = sigmoid(model[0].weight_1 * x1 + model[0].weight_2 * x2 + model[0].bias);
+    let b: f32 = sigmoid(model[1].weight_1 * x1 + model[1].weight_2 * x2 + model[1].bias);
+    sigmoid(a * model[2].weight_1 + b * model[2].weight_2 + model[2].bias)
 }
 
 fn loss_fn(train_set: &Vec<(i32, i32, i32)>, model: Model) -> f32 {
@@ -38,17 +34,55 @@ fn get_random_float() -> f32 {
     rand::random()
 }
 
+fn create_random_neuron() -> Neuron {
+    Neuron {
+        weight_1: get_random_float(),
+        weight_2: get_random_float(),
+        bias: get_random_float(),
+    }
+}
+
 fn create_random_model() -> Model {
-    Model {
-        or_w1: get_random_float(),
-        or_w2: get_random_float(),
-        or_b: get_random_float(),
-        and_w1: get_random_float(),
-        and_w2: get_random_float(),
-        and_b: get_random_float(),
-        nand_w1: get_random_float(),
-        nand_w2: get_random_float(),
-        nand_b: get_random_float(),
+    [
+        create_random_neuron(),
+        create_random_neuron(),
+        create_random_neuron(),
+    ]
+}
+
+fn apply_neuron_diff(neuron: Neuron, diff: Neuron) -> Neuron {
+    let rate = 0.01;
+    Neuron {
+        weight_1: neuron.weight_1 - rate * diff.weight_1,
+        weight_2: neuron.weight_2 - rate * diff.weight_2,
+        bias: neuron.bias - rate * diff.bias,
+    }
+}
+
+fn numerical_diff_on_neuron(
+    neuron_index: usize,
+    model: Model,
+    train_set: &Vec<(i32, i32, i32)>,
+    loss_value: f32,
+) -> Neuron {
+    let eps = 0.01;
+
+    let mut model_dw1 = model.clone();
+    model_dw1[neuron_index].weight_1 += eps;
+    let dw1 = (loss_fn(&train_set, model_dw1) - loss_value) / eps;
+
+    let mut model_dw2 = model.clone();
+    model_dw2[neuron_index].weight_2 += eps;
+    let dw2 = (loss_fn(&train_set, model_dw2) - loss_value) / eps;
+
+    let mut model_dwb = model.clone();
+    model_dwb[neuron_index].bias += eps;
+    let dwb = (loss_fn(&train_set, model_dwb) - loss_value) / eps;
+
+    Neuron {
+        weight_1: dw1,
+        weight_2: dw2,
+        bias: dwb,
     }
 }
 
@@ -56,97 +90,18 @@ fn main() {
     let xor_train_set: Vec<(i32, i32, i32)> = vec![(0, 0, 0), (0, 1, 1), (1, 0, 1), (1, 1, 0)];
     let mut model = create_random_model();
 
-    let eps = 0.1;
-    let rate = 0.1;
-
-    for _ in 0..200 * 200 {
+    for _ in 0..200*2000 {
         let loss = loss_fn(&xor_train_set, model);
         println!("loss = {}", loss);
 
-        let diff_or_w1 = (loss_fn(
-            &xor_train_set,
-            Model {
-                or_w1: model.or_w1 + eps,
-                ..model
-            },
-        ) - loss)
-            / eps;
-        let diff_or_w2 = (loss_fn(
-            &xor_train_set,
-            Model {
-                or_w2: model.or_w2 + eps,
-                ..model
-            },
-        ) - loss)
-            / eps;
-        let diff_or_b = (loss_fn(
-            &xor_train_set,
-            Model {
-                or_b: model.or_b + eps,
-                ..model
-            },
-        ) - loss)
-            / eps;
-        let diff_and_w1 = (loss_fn(
-            &xor_train_set,
-            Model {
-                and_w1: model.and_w1 + eps,
-                ..model
-            },
-        ) - loss)
-            / eps;
-        let diff_and_w2 = (loss_fn(
-            &xor_train_set,
-            Model {
-                and_w2: model.and_w2 + eps,
-                ..model
-            },
-        ) - loss)
-            / eps;
-        let diff_and_b = (loss_fn(
-            &xor_train_set,
-            Model {
-                and_b: model.and_b + eps,
-                ..model
-            },
-        ) - loss)
-            / eps;
-        let diff_nand_w1 = (loss_fn(
-            &xor_train_set,
-            Model {
-                nand_w1: model.nand_w1 + eps,
-                ..model
-            },
-        ) - loss)
-            / eps;
-        let diff_nand_w2 = (loss_fn(
-            &xor_train_set,
-            Model {
-                nand_w2: model.nand_w2 + eps,
-                ..model
-            },
-        ) - loss)
-            / eps;
-        let diff_nand_b = (loss_fn(
-            &xor_train_set,
-            Model {
-                nand_b: model.nand_b + eps,
-                ..model
-            },
-        ) - loss)
-            / eps;
+        let mut new_model: [Neuron; 3] = model.clone();
 
-        model = Model {
-            or_w1: model.or_w1 - rate * diff_or_w1,
-            or_w2: model.or_w2 - rate * diff_or_w2,
-            or_b: model.or_b - rate * diff_or_b,
-            and_w1: model.and_w1 - rate * diff_and_w1,
-            and_w2: model.and_w2 - rate * diff_and_w2,
-            and_b: model.and_b - rate * diff_and_b,
-            nand_w1: model.nand_w1 - rate * diff_nand_w1,
-            nand_w2: model.nand_w2 - rate * diff_nand_w2,
-            nand_b: model.nand_b - rate * diff_nand_b,
-        };
+        for (i, _) in model.iter().enumerate() {
+            let neuron_diff = numerical_diff_on_neuron(i, model, &xor_train_set, loss);
+            new_model[i] = apply_neuron_diff(model[i], neuron_diff);
+        }
+
+        model = new_model;
 
         println!("loss = {}", loss_fn(&xor_train_set, model));
     }
