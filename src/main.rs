@@ -1,6 +1,8 @@
+use matrix::Matrix;
+
 mod boolean_gates;
 mod double;
-
+mod matrix;
 #[derive(Clone, Copy, Debug)]
 struct Neuron {
     weight_1: f32,
@@ -27,7 +29,7 @@ fn loss_fn(train_set: &Vec<(i32, i32, i32)>, model: Model) -> f32 {
         let diff = output - t_value.2 as f32;
         result += diff * diff;
     }
-    return result;
+    return result / train_set.len() as f32;
 }
 
 fn get_random_float() -> f32 {
@@ -90,7 +92,7 @@ fn main() {
     let xor_train_set: Vec<(i32, i32, i32)> = vec![(0, 0, 0), (0, 1, 1), (1, 0, 1), (1, 1, 0)];
     let mut model = create_random_model();
 
-    for _ in 0..200*2000 {
+    for _ in 0..200 * 2000 {
         let loss = loss_fn(&xor_train_set, model);
         println!("loss = {}", loss);
 
