@@ -37,12 +37,9 @@ impl Matrix {
     }
 
     pub fn dot(&self, matrix: &Matrix) -> Matrix {
-        if self.cols != matrix.rows {
-            panic!("You cannot multiply a matrix which its cols does not match the rows of the other matrix");
-        }
+        assert!(self.cols == matrix.rows, "You cannot multiply a matrix which its cols does not match the rows of the other matrix");
 
         let mut new_matrix = Matrix::new(self.rows, matrix.cols);
-
         let n = self.cols;
 
         for i in 0..new_matrix.rows {
@@ -89,16 +86,27 @@ impl Matrix {
         }
     }
 
-    fn sigmoid_value(x: f32) -> f32 {
-        return 1f32 / (1f32 + x.exp());
-    }
-
     pub fn fill(&mut self, value: f32) -> () {
         for i in 0..self.rows {
             for j in 0..self.cols {
                 self.imp[i * self.cols + j] = value;
             }
         }
+    }
+
+    pub fn row(&self, row_index: usize) -> Matrix {
+        let stride = self.cols;
+        let row_index = row_index * stride;
+        let vec = &self.imp[row_index..row_index + stride];
+        Matrix {
+            cols: self.cols,
+            rows: 1,
+            imp: vec.to_vec(),
+        }
+    }
+
+    fn sigmoid_value(x: f32) -> f32 {
+        return 1f32 / (1f32 + x.exp());
     }
 }
 
@@ -151,9 +159,28 @@ impl XorModel {
         activation_matrix.at(0, 0).copied()
     }
 
-    pub fn set_input(&mut self, x: f32, y: f32) {
-        *self.x.at_mut(0, 0).unwrap() = x;
-        *self.x.at_mut(0, 1).unwrap() = y;
+    pub fn set_input_matrix(&mut self, input_matrix: Matrix) {
+        assert!(input_matrix.rows == self.x.rows);
+        assert!(input_matrix.cols == self.x.cols);
+        self.x = input_matrix
+    }
+
+    pub fn loss(&mut self, training_input: &Matrix, training_output: &Matrix) -> f32 {
+        assert!(training_input.rows == training_output.rows);
+
+        let mut result = 0f32;
+
+        for i in 0..training_input.rows {
+            let row = training_input.row(i);
+            self.set_input_matrix(row);
+            let f_result = self.forward().unwrap();
+            let expected_matrix = training_output.row(i);
+            let expected = expected_matrix.at(0, 0).unwrap();
+            let diff = expected - f_result;
+            result += diff * diff;
+        }
+
+        result
     }
 }
 
@@ -164,13 +191,18 @@ mod tests {
     #[test]
     fn xor() {
         let mut xor_model = XorModel::new();
-        for i in 0..2 {
+        /*for i in 0..2 {
             for j in 0..2 {
                 xor_model.set_input(i as f32, j as f32);
                 let value = xor_model.forward();
                 println!("{} | {} = {:?}", i, j, value);
             }
-        }
+        }*/
+        let training_input =
+            Matrix::from_literal(vec![0f32, 0f32, 0f32, 1f32, 1f32, 0f32, 1f32, 1f32], 4, 2);
+        let training_output = Matrix::from_literal(vec![0f32, 1f32, 1f32, 0f32], 4, 1);
+        let loss = xor_model.loss(&training_input, &training_output);
+        println!("loss={loss}");
         println!();
     }
 
