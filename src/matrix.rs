@@ -1,6 +1,6 @@
 use core::fmt;
 
-use crate::{get_random_float, sigmoid};
+use crate::get_random_float;
 
 #[derive(Debug)]
 pub struct Matrix {
@@ -20,11 +20,12 @@ impl Matrix {
     }
 
     pub fn new_rand(rows: usize, cols: usize) -> Matrix {
-        let mat = Matrix {
+        let mut mat = Matrix {
             rows,
             cols,
-            imp: vec![get_random_float(); cols * rows],
+            imp: vec![0f32; cols * rows],
         };
+        mat.rand(0f32, 1f32);
         mat
     }
 
@@ -70,14 +71,6 @@ impl Matrix {
         }
     }
 
-    pub fn at(&self, x: usize, y: usize) -> Option<&f32> {
-        self.imp.get(x * self.cols + y)
-    }
-
-    pub fn at_mut(&mut self, x: usize, y: usize) -> Option<&mut f32> {
-        self.imp.get_mut(x * self.cols + y)
-    }
-
     pub fn rand(&mut self, min: f32, max: f32) -> () {
         for i in 0..self.rows {
             for j in 0..self.cols {
@@ -86,19 +79,19 @@ impl Matrix {
         }
     }
 
+    pub fn at(&self, x: usize, y: usize) -> Option<&f32> {
+        self.imp.get(x * self.cols + y)
+    }
+
+    pub fn at_mut(&mut self, x: usize, y: usize) -> Option<&mut f32> {
+        self.imp.get_mut(x * self.cols + y)
+    }
+
     pub fn sigmoid(&mut self) {
         for i in 0..self.rows {
             for j in 0..self.cols {
                 let value = self.at(i, j).unwrap();
-                *self.at_mut(i, j).unwrap() = sigmoid(*value);
-            }
-        }
-    }
-
-    pub fn fill(&mut self, value: f32) -> () {
-        for i in 0..self.rows {
-            for j in 0..self.cols {
-                self.imp[i * self.cols + j] = value;
+                *self.at_mut(i, j).unwrap() = Matrix::sigmoid_value(*value);
             }
         }
     }
