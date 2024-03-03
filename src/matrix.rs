@@ -2,6 +2,7 @@ use core::fmt;
 
 use crate::{get_random_float, sigmoid};
 
+#[derive(Debug)]
 pub struct Matrix {
     rows: usize,
     cols: usize,
@@ -37,7 +38,10 @@ impl Matrix {
     }
 
     pub fn dot(&self, matrix: &Matrix) -> Matrix {
-        assert!(self.cols == matrix.rows, "You cannot multiply a matrix which its cols does not match the rows of the other matrix");
+        assert!(
+            self.cols == matrix.rows,
+            "You cannot multiply a matrix which its cols does not match the rows of the other matrix"
+        );
 
         let mut new_matrix = Matrix::new(self.rows, matrix.cols);
         let n = self.cols;
@@ -54,6 +58,11 @@ impl Matrix {
     }
 
     pub fn sum(&mut self, matrix: &Matrix) -> () {
+        assert!(
+            self.shape() == matrix.shape(),
+            "You cannot sum two matrix of different shape"
+        );
+
         for i in 0..self.rows {
             for j in 0..self.cols {
                 *self.at_mut(i, j).unwrap() += matrix.at(i, j).unwrap();
@@ -105,6 +114,10 @@ impl Matrix {
         }
     }
 
+    pub fn shape(&self) -> (usize, usize) {
+        (self.rows, self.cols)
+    }
+
     fn sigmoid_value(x: f32) -> f32 {
         return 1f32 / (1f32 + x.exp());
     }
@@ -127,6 +140,7 @@ impl fmt::Display for Matrix {
     }
 }
 
+#[derive(Debug)]
 struct XorModel {
     // INPUT
     x: Matrix,
@@ -149,19 +163,18 @@ impl XorModel {
         }
     }
 
-    pub fn forward(&mut self) -> Option<f32> {
+    pub fn forward(&self) -> Matrix {
         let mut activation_matrix = self.x.dot(&self.weights_layer_1);
         activation_matrix.sum(&self.bias_layer_1);
         activation_matrix.sigmoid();
         let mut activation_matrix = activation_matrix.dot(&self.weights_layer_2);
         activation_matrix.sum(&self.bias_layer_2);
         activation_matrix.sigmoid();
-        activation_matrix.at(0, 0).copied()
+        activation_matrix
     }
 
     pub fn set_input_matrix(&mut self, input_matrix: Matrix) {
-        assert!(input_matrix.rows == self.x.rows);
-        assert!(input_matrix.cols == self.x.cols);
+        assert!(input_matrix.shape() == self.x.shape());
         self.x = input_matrix
     }
 
@@ -173,14 +186,115 @@ impl XorModel {
         for i in 0..training_input.rows {
             let row = training_input.row(i);
             self.set_input_matrix(row);
-            let f_result = self.forward().unwrap();
+            let f_result = self.forward();
             let expected_matrix = training_output.row(i);
-            let expected = expected_matrix.at(0, 0).unwrap();
-            let diff = expected - f_result;
-            result += diff * diff;
+
+            assert!(f_result.shape() == expected_matrix.shape());
+
+            // Computing difference like this allows us to compute the diff of two matrix maybe, if
+            // in the future input and output should not be a value but a matrix
+            for j in 0..f_result.cols {
+                let diff = f_result.at(0, j).unwrap() - expected_matrix.at(0, j).unwrap();
+                result += diff * diff;
+            }
         }
 
-        result
+        result / training_input.rows as f32
+    }
+
+    pub fn train(&mut self, training_input: &Matrix, training_output: &Matrix) -> () {
+        let loss = self.loss(training_input, training_output);
+        println!("loss={loss}");
+
+        for _ in 0..100*10000 {
+            let diff = self.finite_diff(training_input, training_output, 0.1);
+            self.apply_diff(&diff, 0.1);
+            let loss = self.loss(training_input, training_output);
+            println!("loss={loss}");
+        }
+
+    }
+
+    pub fn apply_diff(&mut self, diff: &XorModel, learning_rate: f32) -> () {
+        for i in 0..self.weights_layer_1.rows {
+            for j in 0..self.weights_layer_1.cols {
+                let actual_diff = *diff.weights_layer_1.at(i, j).unwrap();
+                *self.weights_layer_1.at_mut(i, j).unwrap() -= learning_rate * actual_diff;
+            }
+        }
+
+        for i in 0..self.bias_layer_1.rows {
+            for j in 0..self.bias_layer_1.cols {
+                let actual_diff = *diff.bias_layer_1.at(i, j).unwrap();
+                *self.bias_layer_1.at_mut(i, j).unwrap() -= learning_rate * actual_diff;
+            }
+        }
+
+        for i in 0..self.weights_layer_2.rows {
+            for j in 0..self.weights_layer_2.cols {
+                let actual_diff = *diff.weights_layer_2.at(i, j).unwrap();
+                *self.weights_layer_2.at_mut(i, j).unwrap() -= learning_rate * actual_diff;
+            }
+        }
+
+        for i in 0..self.bias_layer_2.rows {
+            for j in 0..self.bias_layer_2.cols {
+                let actual_diff = *diff.bias_layer_2.at(i, j).unwrap();
+                *self.bias_layer_2.at_mut(i, j).unwrap() -= learning_rate * actual_diff;
+            }
+        }
+    }
+
+    pub fn finite_diff(
+        &mut self,
+        training_input: &Matrix,
+        training_output: &Matrix,
+        epsilon: f32,
+    ) -> XorModel {
+        let mut gradient = XorModel::new();
+        let initial_loss = self.loss(training_input, training_output);
+
+        for i in 0..self.weights_layer_1.rows {
+            for j in 0..self.weights_layer_1.cols {
+                let actual = *self.weights_layer_1.at(i, j).unwrap();
+                *self.weights_layer_1.at_mut(i, j).unwrap() = actual + epsilon;
+                *gradient.weights_layer_1.at_mut(i, j).unwrap() =
+                    (self.loss(training_input, training_output) - initial_loss) / epsilon;
+                *self.weights_layer_1.at_mut(i, j).unwrap() = actual;
+            }
+        }
+
+        for i in 0..self.bias_layer_1.rows {
+            for j in 0..self.bias_layer_1.cols {
+                let actual = *self.bias_layer_1.at(i, j).unwrap();
+                *self.bias_layer_1.at_mut(i, j).unwrap() = actual + epsilon;
+                *gradient.bias_layer_1.at_mut(i, j).unwrap() =
+                    (self.loss(training_input, training_output) - initial_loss) / epsilon;
+                *self.bias_layer_1.at_mut(i, j).unwrap() = actual;
+            }
+        }
+
+        for i in 0..self.weights_layer_2.rows {
+            for j in 0..self.weights_layer_2.cols {
+                let actual = *self.weights_layer_2.at(i, j).unwrap();
+                *self.weights_layer_2.at_mut(i, j).unwrap() = actual + epsilon;
+                *gradient.weights_layer_2.at_mut(i, j).unwrap() =
+                    (self.loss(training_input, training_output) - initial_loss) / epsilon;
+                *self.weights_layer_2.at_mut(i, j).unwrap() = actual;
+            }
+        }
+
+        for i in 0..self.bias_layer_2.rows {
+            for j in 0..self.bias_layer_2.cols {
+                let actual = *self.bias_layer_2.at(i, j).unwrap();
+                *self.bias_layer_2.at_mut(i, j).unwrap() = actual + epsilon;
+                *gradient.bias_layer_2.at_mut(i, j).unwrap() =
+                    (self.loss(training_input, training_output) - initial_loss) / epsilon;
+                *self.bias_layer_2.at_mut(i, j).unwrap() = actual;
+            }
+        }
+
+        gradient
     }
 }
 
@@ -191,18 +305,10 @@ mod tests {
     #[test]
     fn xor() {
         let mut xor_model = XorModel::new();
-        /*for i in 0..2 {
-            for j in 0..2 {
-                xor_model.set_input(i as f32, j as f32);
-                let value = xor_model.forward();
-                println!("{} | {} = {:?}", i, j, value);
-            }
-        }*/
         let training_input =
             Matrix::from_literal(vec![0f32, 0f32, 0f32, 1f32, 1f32, 0f32, 1f32, 1f32], 4, 2);
         let training_output = Matrix::from_literal(vec![0f32, 1f32, 1f32, 0f32], 4, 1);
-        let loss = xor_model.loss(&training_input, &training_output);
-        println!("loss={loss}");
+        xor_model.train(&training_input, &training_output);
         println!();
     }
 
