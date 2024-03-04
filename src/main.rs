@@ -1,8 +1,8 @@
-use matrix::Matrix;
-
 mod boolean_gates;
 mod double;
 mod matrix;
+mod model;
+
 #[derive(Clone, Copy, Debug)]
 struct Neuron {
     weight_1: f32,
