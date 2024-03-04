@@ -5,14 +5,16 @@ pub trait Model<'a> {
     fn forward(&self) -> Matrix;
     fn set_input_matrix(&mut self, input_matrix: Matrix);
     fn loss(&mut self, training_input: &Matrix, training_output: &Matrix) -> f32;
-    fn train(&mut self, training_input: &Matrix, training_output: &Matrix) -> ();
-    fn apply_diff(&mut self, diff: &Self, learning_rate: f32) -> ();
+    fn train(&mut self, training_input: &Matrix, training_output: &Matrix) -> Option<()>;
+    fn apply_diff(&mut self, diff: &Self, learning_rate: f32) -> Option<()>;
     fn finite_diff(
         &mut self,
         training_input: &Matrix,
         training_output: &Matrix,
         epsilon: f32,
-    ) -> Self;
+    ) -> Option<Self>
+    where
+        Self: Sized;
 }
 
 #[derive(Debug)]
@@ -25,6 +27,8 @@ struct BaseModel<'a> {
 
 impl<'a> Model<'a> for BaseModel<'a> {
     fn new(architecture: &'a [usize]) -> Self {
+        assert!(architecture.len() >= 1);
+
         let mut iter = architecture.iter();
         let mut input_val = iter.next().unwrap();
         let input = Matrix::new_rand(1, *input_val);
@@ -95,24 +99,26 @@ impl<'a> Model<'a> for BaseModel<'a> {
         result / training_input.rows as f32
     }
 
-    fn train(&mut self, training_input: &Matrix, training_output: &Matrix) -> () {
+    fn train(&mut self, training_input: &Matrix, training_output: &Matrix) -> Option<()> {
         let loss = self.loss(training_input, training_output);
         println!("loss={loss}");
 
         for _ in 0..100 * 1000 {
-            let diff = self.finite_diff(training_input, training_output, 0.1);
+            let diff = self.finite_diff(training_input, training_output, 0.1)?;
             self.apply_diff(&diff, 0.1);
-            let loss = self.loss(training_input, training_output);
-            println!("loss={loss}");
+            self.loss(training_input, training_output);
         }
+
+        println!("loss={loss}");
+        Some(())
     }
 
-    fn apply_diff(&mut self, diff: &Self, learning_rate: f32) -> () {
+    fn apply_diff(&mut self, diff: &Self, learning_rate: f32) -> Option<()> {
         for (idx, w) in &mut self.weights.iter_mut().enumerate() {
             for i in 0..w.rows {
                 for j in 0..w.cols {
-                    let actual_diff = *diff.weights.get(idx).unwrap().at(i, j).unwrap();
-                    *w.at_mut(i, j).unwrap() -= learning_rate * actual_diff;
+                    let actual_diff = *diff.weights.get(idx)?.at(i, j)?;
+                    *w.at_mut(i, j)? -= learning_rate * actual_diff;
                 }
             }
         }
@@ -120,11 +126,13 @@ impl<'a> Model<'a> for BaseModel<'a> {
         for (idx, b) in &mut self.bias.iter_mut().enumerate() {
             for i in 0..b.rows {
                 for j in 0..b.cols {
-                    let actual_diff = *diff.bias.get(idx).unwrap().at(i, j).unwrap();
-                    *b.at_mut(i, j).unwrap() -= learning_rate * actual_diff;
+                    let actual_diff = *diff.bias.get(idx)?.at(i, j)?;
+                    *b.at_mut(i, j)? -= learning_rate * actual_diff;
                 }
             }
         }
+
+        Some(())
     }
 
     fn finite_diff(
@@ -132,18 +140,18 @@ impl<'a> Model<'a> for BaseModel<'a> {
         training_input: &Matrix,
         training_output: &Matrix,
         epsilon: f32,
-    ) -> Self {
+    ) -> Option<Self> {
         let mut gradient = BaseModel::new(self.architecture);
         let initial_loss = self.loss(training_input, training_output);
 
         for (idx, w) in gradient.weights.iter_mut().enumerate() {
             for i in 0..w.rows {
                 for j in 0..w.cols {
-                    let actual = *self.weights.get_mut(idx).unwrap().at(i, j).unwrap();
-                    *self.weights.get_mut(idx).unwrap().at_mut(i, j).unwrap() = actual + epsilon;
-                    *w.at_mut(i, j).unwrap() =
+                    let actual = *self.weights.get_mut(idx)?.at(i, j)?;
+                    *self.weights.get_mut(idx)?.at_mut(i, j)? = actual + epsilon;
+                    *w.at_mut(i, j)? =
                         (self.loss(training_input, training_output) - initial_loss) / epsilon;
-                    *self.weights.get_mut(idx).unwrap().at_mut(i, j).unwrap() = actual;
+                    *self.weights.get_mut(idx)?.at_mut(i, j)? = actual;
                 }
             }
         }
@@ -151,16 +159,16 @@ impl<'a> Model<'a> for BaseModel<'a> {
         for (idx, b) in gradient.bias.iter_mut().enumerate() {
             for i in 0..b.rows {
                 for j in 0..b.cols {
-                    let actual = *self.bias.get_mut(idx).unwrap().at(i, j).unwrap();
-                    *self.bias.get_mut(idx).unwrap().at_mut(i, j).unwrap() = actual + epsilon;
-                    *b.at_mut(i, j).unwrap() =
+                    let actual = *self.bias.get_mut(idx)?.at(i, j)?;
+                    *self.bias.get_mut(idx)?.at_mut(i, j)? = actual + epsilon;
+                    *b.at_mut(i, j)? =
                         (self.loss(training_input, training_output) - initial_loss) / epsilon;
-                    *self.bias.get_mut(idx).unwrap().at_mut(i, j).unwrap() = actual;
+                    *self.bias.get_mut(idx)?.at_mut(i, j)? = actual;
                 }
             }
         }
 
-        gradient
+        Some(gradient)
     }
 }
 
@@ -181,7 +189,23 @@ mod tests {
         for i in 0..2 {
             for j in 0..2 {
                 xor_model.set_input_matrix(Matrix::from_literal(vec![i as f32, j as f32], 1, 2));
-                println!("{} | {} = {}", i, j, xor_model.forward())
+                println!("{} ^ {} = {}", i, j, xor_model.forward())
+            }
+        }
+    }
+
+    #[test]
+    fn and() {
+        let mut and_model = BaseModel::new(&[2, 3, 1]);
+        let training_input =
+            Matrix::from_literal(vec![0f32, 0f32, 0f32, 1f32, 1f32, 0f32, 1f32, 1f32], 4, 2);
+        let training_output = Matrix::from_literal(vec![0f32, 0f32, 0f32, 1f32], 4, 1);
+        and_model.train(&training_input, &training_output);
+        println!();
+        for i in 0..2 {
+            for j in 0..2 {
+                and_model.set_input_matrix(Matrix::from_literal(vec![i as f32, j as f32], 1, 2));
+                println!("{} & {} = {}", i, j, and_model.forward())
             }
         }
     }
