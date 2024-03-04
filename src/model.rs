@@ -1,7 +1,7 @@
 use crate::matrix::Matrix;
 
-pub trait Model {
-    fn new() -> Self;
+pub trait Model<'a> {
+    fn new(architecture: &'a [usize]) -> Self;
     fn forward(&self) -> Matrix;
     fn set_input_matrix(&mut self, input_matrix: Matrix);
     fn loss(&mut self, training_input: &Matrix, training_output: &Matrix) -> f32;
@@ -23,7 +23,7 @@ struct BaseModel<'a> {
     architecture: &'a [usize],
 }
 
-impl<'a> BaseModel<'a> {
+impl<'a> Model<'a> for BaseModel<'a> {
     fn new(architecture: &'a [usize]) -> Self {
         let mut iter = architecture.iter();
         let mut input_val = iter.next().unwrap();
